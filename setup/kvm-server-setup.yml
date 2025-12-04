@@ -1,0 +1,246 @@
+---
+- name: Configure KVM/QEMU Virtualization Server
+  hosts: localhost
+  become: yes
+  connection: local
+  
+  vars:
+    # NFS Server Configuration (can be IP address or FQDN)
+    nfs_server: ""
+    nfs_templates_share: ""  # NFS share for VM templates
+    
+    # Local Mount Points
+    templates_mount: ""
+    
+    # Directories (build_directory is optional - only created if defined)
+    build_directory: ""
+    iso_directory: ""
+    drivers_directory: ""
+    templates_directory: "{{ templates_mount }}/templates"
+    
+    # VirtIO Configuration
+    virtio_iso_url: ""
+    virtio_iso_path: "{{ iso_directory }}/virtio-win.iso"
+    
+    # User to add to virtualization groups
+    target_user: ""
+  
+  tasks:
+    - name: Check if virtualization is enabled
+      block:
+        - name: Check for virtualization support (Intel VT-x or AMD-V)
+          shell: |
+            if grep -E '(vmx|svm)' /proc/cpuinfo > /dev/null; then
+              echo "enabled"
+            else
+              echo "disabled"
+            fi
+          register: virt_check
+          changed_when: false
+
+        - name: Fail if virtualization is not enabled
+          fail:
+            msg: |
+              Hardware virtualization is NOT enabled!
+              
+              Please enable virtualization in your BIOS/UEFI settings:
+              - For Intel CPUs: Enable VT-x (Intel Virtualization Technology)
+              - For AMD CPUs: Enable AMD-V (SVM Mode)
+              
+              After enabling, reboot your system and try again.
+          when: virt_check.stdout == "disabled"
+
+        - name: Confirm virtualization is enabled
+          debug:
+            msg: "Hardware virtualization is enabled and ready for libvirt"
+          when: virt_check.stdout == "enabled"
+          
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: Install virtualization packages
+      apt:
+        name:
+          - qemu-kvm
+          - libvirt-daemon-system
+          - libvirt-clients
+          - bridge-utils
+          - virt-manager
+          - nfs-common
+          - unzip
+          - pipewire
+          - xorriso
+          - swtpm
+          - acl  # For managing fine-grained permissions
+          - python3-lxml
+        state: present
+    
+    - name: Add target user to virtualization groups
+      user:
+        name: "{{ target_user }}"
+        groups:
+          - libvirt
+          - kvm
+          - libvirt-qemu  # Allows interaction with QEMU processes
+        append: yes
+    
+    - name: Enable and start libvirtd service
+      systemd:
+        name: libvirtd
+        enabled: yes
+        state: started
+    
+    - name: Create templates mount directory
+      file:
+        path: "{{ templates_mount }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Mount NFS templates share
+      mount:
+        path: "{{ templates_mount }}"
+        src: "{{ nfs_server }}:{{ nfs_templates_share }}"
+        fstype: nfs
+        opts: defaults
+        state: mounted
+    
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+    
+    - name: Create templates directory in NFS mount
+      file:
+        path: "{{ templates_directory }}"
+        state: directory
+        mode: '0755'
+    
+    - name: Create build directory with proper permissions
+      file:
+        path: "{{ build_directory }}"
+        state: directory
+        owner: root
+        group: libvirt
+        mode: '2775'  # setgid bit ensures new files inherit group
+      when: build_directory is defined
+    
+    - name: Set default ACL on build directory for libvirt group
+      acl:
+        path: "{{ build_directory }}"
+        entity: libvirt
+        etype: group
+        permissions: rwx
+        default: yes
+        state: present
+      when: build_directory is defined
+
+    - name: Create /etc/qemu directory
+      file:
+        path: /etc/qemu
+        state: directory
+        mode: '0755'
+    
+    - name: Configure QEMU bridge
+      copy:
+        content: "allow virbr0\n"
+        dest: /etc/qemu/bridge.conf
+        mode: '0644'
+    
+    - name: Set SUID on qemu-bridge-helper
+      file:
+        path: /usr/lib/qemu/qemu-bridge-helper
+        mode: 'u+s'
+    
+    - name: Start default libvirt network
+      community.libvirt.virt_net:
+        name: default
+        state: active
+      ignore_errors: yes
+    
+    - name: Set default libvirt network to autostart
+      community.libvirt.virt_net:
+        name: default
+        autostart: yes
+      ignore_errors: yes
+    
+    - name: Create ISO directory with proper permissions
+      file:
+        path: "{{ iso_directory }}"
+        state: directory
+        owner: root
+        group: libvirt
+        mode: '2775'
+    
+    - name: Set default ACL on ISO directory for libvirt group
+      acl:
+        path: "{{ iso_directory }}"
+        entity: libvirt
+        etype: group
+        permissions: rwx
+        default: yes
+        state: present
+    
+    - name: Download VirtIO drivers ISO
+      get_url:
+        url: "{{ virtio_iso_url }}"
+        dest: "{{ virtio_iso_path }}"
+        mode: '0644'
+      register: virtio_download
+    
+    - name: Create drivers directory with proper permissions
+      file:
+        path: "{{ drivers_directory }}"
+        state: directory
+        owner: root
+        group: libvirt
+        mode: '2775'
+    
+    - name: Set default ACL on drivers directory for libvirt group
+      acl:
+        path: "{{ drivers_directory }}"
+        entity: libvirt
+        etype: group
+        permissions: rwx
+        default: yes
+        state: present
+    
+    - name: Extract VirtIO drivers
+      block:
+        - name: Create temporary mount point
+          file:
+            path: /mnt/virtio
+            state: directory
+            mode: '0755'
+        
+        - name: Mount VirtIO ISO
+          mount:
+            path: /mnt/virtio
+            src: "{{ virtio_iso_path }}"
+            fstype: iso9660
+            opts: loop,ro
+            state: mounted
+        
+        - name: Copy viostor drivers
+          copy:
+            src: /mnt/virtio/viostor
+            dest: "{{ drivers_directory }}/"
+            remote_src: yes
+            mode: '0755'
+        
+        - name: Unmount VirtIO ISO
+          mount:
+            path: /mnt/virtio
+            state: unmounted
+        
+        - name: Remove temporary mount point
+          file:
+            path: /mnt/virtio
+            state: absent
+      when: virtio_download.changed or not (drivers_directory + '/viostor') is exists
+
+  handlers:
+    - name: restart libvirtd
+      systemd:
+        name: libvirtd
+        state: restarted

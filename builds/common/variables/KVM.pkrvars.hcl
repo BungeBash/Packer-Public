@@ -1,0 +1,6 @@
+firmware_vars       = "/usr/share/OVMF/OVMF_VARS_4M.fd"
+lin_firmware_code   = "/usr/share/OVMF/OVMF_CODE_4M.fd"
+output_directory    = "" # Ex: "/build/"
+templates_directory = "" # Ex: "/mnt/templates/"
+qemu_binary         = "qemu-system-x86_64"
+win_firmware_code   = "/usr/share/OVMF/OVMF_CODE_4M.secboot.fd"

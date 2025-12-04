@@ -1,0 +1,20 @@
+---
+# vars.yml - Variable definitions for KVM server setup
+
+# NFS Server Configuration (can be IP address or FQDN)
+nfs_server: "192.168.1.100"
+nfs_templates_share: "/mnt/storage/vme-nfs"
+
+# Local Mount Points
+templates_mount: "/vme-nfs"
+
+# Directories
+build_directory: "/build"
+iso_directory: "/isos"
+drivers_directory: "/drivers"
+
+# VirtIO Configuration
+virtio_iso_url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.285-1/virtio-win.iso"
+
+# User to add to virtualization groups (defaults to ansible_user if not set)
+target_user: "{{ ansible_user }}"

@@ -1,0 +1,230 @@
+name: Packer Changed Builds
+
+on: []
+  # push:
+  #   paths:
+  #     - 'builds/**'
+  #     - '!builds/**/*-archived/**'
+  #     - '!builds/**/README.md'
+  # workflow_dispatch:
+  #   inputs:
+  #     os:
+  #       description: 'Operating System'
+  #       required: true
+  #       type: choice
+  #       options:
+  #         - Ubuntu-24.04
+  #         - Windows-11
+  #         - Windows-2025
+  #     cloud:
+  #       description: 'Cloud Platform'
+  #       required: true
+  #       type: choice
+  #       options:
+  #         - KVM
+  #         - VMware
+
+env:
+  PRODUCT_VERSION: "latest"
+
+jobs:
+  setup:
+    runs-on: arc-packer
+    outputs:
+      build_matrix: ${{ steps.build-matrix.outputs.build_matrix }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build Matrix (Automated)
+        id: changed-files
+        if: github.event_name == 'push'
+        uses: tj-actions/changed-files@v47
+        with:
+          files: 'builds/**'
+          files_ignore: |
+            builds/**/*-archived/**
+            .github/**
+            *.md
+          dir_names: true
+          separator: ","
+
+      - name: Build Matrix (Manual + Automated)
+        id: build-matrix
+        run: |
+          # --- Manual workflow_dispatch path ---
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            os="${{ github.event.inputs.os }}"
+            os="${os/-/ }"     # Replace first hyphen with a space
+          
+            cloud="${{ github.event.inputs.cloud }}"
+          
+            if [[ "$cloud" == "KVM" ]]; then
+              runner="BareMetal2"
+            else
+              runner="arc-packer"
+            fi
+          
+            json_matrix=$(jq -nc \
+              --arg os "$os" \
+              --arg cloud "$cloud" \
+              --arg runner "$runner" \
+              '[{os: $os, cloud: $cloud, runner: $runner}]'
+            )
+          
+          else
+            # --- Automated push path ---
+            echo "Detecting changed files..."
+            changed_files="${{ steps.changed-files.outputs.all_changed_files }}"
+            IFS=',' read -ra DIRS_ARRAY <<< "$changed_files"
+
+            declare -A os_cloud
+
+            for d in "${DIRS_ARRAY[@]}"; do
+              d=$(echo "$d" | xargs)
+              [[ -z "$d" ]] && continue
+
+              d="${d#builds/}"
+
+              os=$(echo "$d" | cut -d'/' -f1)
+              cloud=$(echo "$d" | cut -d'/' -f2)
+
+              if [[ -n "$os" && -n "$cloud" && "$cloud" != "common" ]]; then
+                os_cloud["$os|$cloud"]=1
+              fi
+            done
+
+            json_matrix=$(jq -nc '[]') # start empty
+          
+            for key in "${!os_cloud[@]}"; do
+              IFS='|' read -r os cloud <<< "$key"
+
+              if [[ "$cloud" == "KVM" ]]; then
+                runner="BareMetal2"
+              else
+                runner="arc-packer"
+              fi
+
+              json_matrix=$(jq -nc \
+                --argjson arr "$json_matrix" \
+                --arg os "$os" \
+                --arg cloud "$cloud" \
+                --arg runner "$runner" \
+                '$arr + [{os: $os, cloud: $cloud, runner: $runner}]'
+              )
+            done
+          fi
+
+          # Output final JSON matrix safely
+          {
+            echo "build_matrix<<EOF"
+            echo "$json_matrix"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Generated matrix:"
+          echo "$json_matrix" | jq '.'
+
+
+  build:
+    if: needs.setup.outputs.build_matrix != '[]'
+    runs-on: ${{ matrix.runner }}
+    needs: setup
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+      fail-fast: false
+      max-parallel: 5
+
+    env:
+      PKR_VAR_template_password: ${{ secrets.TEMPLATE_PASSWORD }}
+      PKR_VAR_template_username: ${{ secrets.TEMPLATE_USERNAME }}
+      PKR_VAR_vmware_password: ${{ secrets.VMWARE_PASSWORD }}
+      PKR_VAR_vmware_username: ${{ secrets.VMWARE_USERNAME }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Display runner information
+        run: |
+          echo "Running on: ${{ matrix.runner }}"
+          echo "OS: ${{ matrix.os }}"
+          echo "Cloud: ${{ matrix.cloud }}"
+          echo "Hostname: $(hostname)"
+
+      - name: Prepare Packer cache directories
+        run: |
+          if [[ "${{ matrix.runner }}" == "arc-packer" ]]; then
+            # Use shared on-prem cache if available, otherwise use local
+            if [ -d "/mnt/packer-cache" ]; then
+              echo "Using shared on-prem cache at /mnt/packer-cache"
+              mkdir -p /mnt/packer-cache/iso
+              mkdir -p /mnt/packer-cache/plugins
+              mkdir -p ~/.packer.d
+              ln -sf /mnt/packer-cache/iso ~/.packer.d/iso
+              ln -sf /mnt/packer-cache/plugins ~/.packer.d/plugins
+            else
+              echo "Using local cache"
+              mkdir -p ~/.packer.d/iso
+              mkdir -p ~/.packer.d/plugins
+            fi
+            sudo apt-get update && sudo apt-get install -y xorriso
+          fi
+
+      - uses: hashicorp/setup-packer@main
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: Cache Packer plugins
+        if: matrix.runner != 'arc-packer' && matrix.runner != 'BareMetal2'
+        uses: actions/cache@v4
+        with:
+          path: ~/.packer.d/plugins
+          key: ${{ runner.os }}-packer-plugins-v1
+          restore-keys: |
+            ${{ runner.os }}-packer-plugins-
+
+      - name: Cache Packer ISOs
+        if: matrix.runner != 'arc-packer' && matrix.runner != 'BareMetal2'
+        uses: actions/cache@v4
+        with:
+          path: ~/.packer.d/iso
+          key: ${{ runner.os }}-packer-isos-${{ matrix.os }}-v1
+          restore-keys: |
+            ${{ runner.os }}-packer-isos-${{ matrix.os }}-
+            ${{ runner.os }}-packer-isos-
+
+      - name: Create hashed password for cloud-init
+        if: startsWith(matrix.os, 'Windows') == false
+        id: hashpw
+        run: |
+          HASH=$(printf '%s' "${{ secrets.TEMPLATE_PASSWORD }}" | openssl passwd -6 -stdin)
+          # export for following steps
+          echo "PKR_VAR_hash_password=$HASH" >> $GITHUB_ENV
+
+      - name: Build Packer image for ${{ matrix.os }}/${{ matrix.cloud }}
+        run: |
+          base_dir="builds/${{ matrix.os }}/${{ matrix.cloud }}"
+          
+          echo "=== Building $base_dir on ${{ matrix.runner }} ==="
+
+          if [ -f "$base_dir/image.pkr.hcl" ]; then
+            cd "$base_dir"
+            echo "[+] Found image.pkr.hcl in $PWD"
+
+            packer init image.pkr.hcl
+            packer validate \
+              -var-file=variables.pkrvars.hcl \
+              -var-file=../../common/variables/${{ matrix.cloud }}.pkrvars.hcl \
+              image.pkr.hcl
+
+            PACKER_LOG=1 packer build -on-error=abort \
+              -var-file=variables.pkrvars.hcl \
+              -var-file=../../common/variables/${{ matrix.cloud }}.pkrvars.hcl \
+              image.pkr.hcl
+          else
+            echo "[!] No image.pkr.hcl found in $base_dir"
+            exit 1
+          fi
