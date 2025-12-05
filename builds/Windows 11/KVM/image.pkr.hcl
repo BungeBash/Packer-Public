@@ -25,6 +25,12 @@ variable "communicator_type" {
   default     = "winrm"
 }
 
+variable "cpu_model" {
+  type        = string
+  description = "The model of CPU to use when building VM that is supported by your hardware"
+  default     = "host"
+}
+
 variable "disk_interface" {
   type        = string
   description = "Disk interface type (virtio, scsi, ide)"
@@ -322,7 +328,7 @@ source "qemu" "Windows11" {
   accelerator    = "kvm"
   qemu_binary    = var.qemu_binary
   headless       = var.headless
-  cpu_model      = "host"
+  cpu_model      = var.cpu_model
   disk_discard   = "unmap"
 
   # Hardware Configuration

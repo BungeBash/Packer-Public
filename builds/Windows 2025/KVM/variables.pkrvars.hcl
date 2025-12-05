@@ -2,6 +2,7 @@ common_shutdown_timeout = "10m"
 communicator_port = 5985
 communicator_timeout = "20m"
 communicator_type = "winrm"
+cpu_model = "host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
 disk_interface = "virtio"
 drivers_url = "/drivers/viostor/2k25/amd64"
 efi = true
@@ -30,7 +31,7 @@ vm_inst_os_image_datacenter_desktop = "Windows Server 2025 SERVERDATACENTER"
 vm_inst_os_key_datacenter = ""
 vm_inst_os_keyboard = "en-US"
 vm_inst_os_language = "en-US"
-vm_shutdown_command = "powershell.exe -ExecutionPolicy Bypass -File \"F:\\shutdown.ps1\""
+vm_shutdown_command = "powershell.exe -ExecutionPolicy Bypass -File \"A:\\shutdown.ps1\""
 vMEM = 8192
 vTPM = true
 windows_update_filters = [

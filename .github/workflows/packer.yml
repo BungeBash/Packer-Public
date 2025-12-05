@@ -61,7 +61,7 @@ jobs:
             cloud="${{ github.event.inputs.cloud }}"
           
             if [[ "$cloud" == "KVM" ]]; then
-              runner="BareMetal2"
+              runner="PackerKVM"
             else
               runner="arc-packer"
             fi
@@ -101,7 +101,7 @@ jobs:
               IFS='|' read -r os cloud <<< "$key"
 
               if [[ "$cloud" == "KVM" ]]; then
-                runner="BareMetal2"
+                runner="PackerKVM"
               else
                 runner="arc-packer"
               fi
@@ -178,7 +178,7 @@ jobs:
           version: ${{ env.PRODUCT_VERSION }}
 
       - name: Cache Packer plugins
-        if: matrix.runner != 'arc-packer' && matrix.runner != 'BareMetal2'
+        if: matrix.runner != 'arc-packer' && matrix.runner != 'PackerKVM'
         uses: actions/cache@v4
         with:
           path: ~/.packer.d/plugins
@@ -187,7 +187,7 @@ jobs:
             ${{ runner.os }}-packer-plugins-
 
       - name: Cache Packer ISOs
-        if: matrix.runner != 'arc-packer' && matrix.runner != 'BareMetal2'
+        if: matrix.runner != 'arc-packer' && matrix.runner != 'PackerKVM'
         uses: actions/cache@v4
         with:
           path: ~/.packer.d/iso

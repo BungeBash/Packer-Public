@@ -2,6 +2,7 @@ common_shutdown_timeout = "10m"
 communicator_port = 5985
 communicator_timeout = "30m"
 communicator_type = "winrm"
+cpu_model = "host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
 disk_interface = "virtio"
 drivers_url = "/drivers/viostor/w11/amd64"
 efi = true
