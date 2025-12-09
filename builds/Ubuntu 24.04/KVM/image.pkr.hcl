@@ -1,5 +1,5 @@
 # https://developer.hashicorp.com/packer/integrations/hashicorp/qemu
-# v.1.0.3
+# v.1.0.4
 
 variable "communicator_type" {
   type        = string
@@ -150,6 +150,9 @@ locals {
     "/user-data" = templatefile(abspath("${path.root}/../common/http/user-data.pkrtpl.hcl"), {
       template_username = var.template_username
       template_password = var.hash_password
+    }),
+    "/runonce.sh"= templatefile(abspath("${path.root}/../common/scripts/runonce.pkrtpl.hcl"), {
+      template_username = var.template_username
     })
   }
   vm_name = "${var.prefix}-${local.build_date}"
@@ -218,6 +221,22 @@ build {
       "${path.root}/../common/scripts/cleanup.sh"
     ]
     execute_command = "echo '${var.template_password}' | sudo -S bash '{{ .Path }}'"
+  }
+
+  provisioner "shell" {
+    inline = [
+      # Find and mount the CD
+      "CDROM_DEV=$(blkid -L cidata || blkid -L CIDATA)",
+      "sudo mkdir -p /mnt/cdrom",
+      "sudo mount $CDROM_DEV /mnt/cdrom",
+
+      # Execute the script from CD
+      "sudo bash /mnt/cdrom/runonce.sh",
+
+      # Unmount
+      "sudo umount /mnt/cdrom"
+    ]
+    execute_command = "echo '${var.template_password}' | sudo -S bash -c '{{ .Path }}'"
   }
 
   post-processor "shell-local" {

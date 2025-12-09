@@ -1,6 +1,6 @@
 # https://developer.hashicorp.com/packer/integrations/hashicorp/vsphere/latest/components/builder/vsphere-iso
 # https://github.com/vmware/packer-examples-for-vsphere/tree/develop?tab=readme-ov-file
-# v1.0.6
+# v1.0.9
 
 variable "convert_template" {
   type        = bool
@@ -184,6 +184,9 @@ locals {
     "/user-data" = templatefile(abspath("${path.root}/../common/http/user-data.pkrtpl.hcl"), {
       template_username = var.template_username
       template_password = var.hash_password
+    }),
+    "/runonce.sh"= templatefile(abspath("${path.root}/../common/scripts/runonce.pkrtpl.hcl"), {
+      template_username = var.template_username
     })
   }
   vm_name = "${var.prefix}-${local.build_date}"
@@ -208,7 +211,7 @@ source "vmware-iso" "Ubuntu2404" {
   ssh_username       = var.template_username
   ssh_password       = var.template_password
   ssh_timeout        = var.ssh_timeout
-  boot_command      = var.vm_boot_command
+  boot_command       = var.vm_boot_command
 
   # VM Configuration
   vm_name            = local.vm_name
@@ -262,5 +265,21 @@ build {
     ]
 
     execute_command = "echo '${var.template_password}' | sudo -S bash '{{ .Path }}'"
+  }
+
+  provisioner "shell" {
+    inline = [
+      # Find and mount the CD
+      "CDROM_DEV=$(blkid -L cidata || blkid -L CIDATA)",
+      "sudo mkdir -p /mnt/cdrom",
+      "sudo mount $CDROM_DEV /mnt/cdrom",
+      
+      # Execute the script from CD
+      "sudo bash /mnt/cdrom/runonce.sh",
+      
+      # Unmount
+      "sudo umount /mnt/cdrom"
+    ]
+    execute_command = "echo '${var.template_password}' | sudo -S bash -c '{{ .Path }}'"
   }
 }

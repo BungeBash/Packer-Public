@@ -59,7 +59,5 @@ for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/debconf/co
 done
 echo "[+] Apt/dpkg locks are clear, finalizing..."
 
-sudo userdel -r packer || true
-
 echo "[+] Final sync"
 sync
