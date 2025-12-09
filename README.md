@@ -19,7 +19,7 @@ Packer/
 │   │   └── variables/
 │   │       ├── KVM.pkrvars.hcl     # KVM-specific vars
 │   │       └── VMware.pkrvars.hcl  # VMware-specific vars
-│   ├── Ubuntu 24.04/
+│   ├── RHEL 9/
 │   │   ├── common/              # Shared configs
 │   │   ├── KVM/
 │   │   │   ├── image.pkr.hcl
@@ -27,6 +27,8 @@ Packer/
 │   │   └── VMware/
 │   │       ├── image.pkr.hcl
 │   │       └── variables.pkrvars.hcl
+│   ├── RHEL 10/
+│   ├── Ubuntu 24.04/
 │   ├── Windows 11/
 │   │   ├── common/
 │   │   ├── KVM/
@@ -103,6 +105,8 @@ The pipeline sets these automagically:
 ## Supported Platforms
 
 ### Currently Supported
+- ✅ **RHEL 9.7** (KVM & VMware)
+- ✅ **RHEL 10.1** (KVM & VMware)
 - ✅ **Ubuntu 24.04** (KVM & VMware)
 - ✅ **Windows 11** (KVM & VMware)
 - ✅ **Windows 2025** (KVM & VMware)
