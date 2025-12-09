@@ -176,11 +176,11 @@ The Kickstart configuration is provided via CD-ROM labeled "cidata".
 
 ## Provisioning Scripts
 
-Both builds execute the following provisioning scripts:
+Both builds execute the following provisioning scripts in order:
 1. **setup.sh** - Initial system setup and configuration
 2. **kvm.sh** or **vmware.sh** - Hypervisor-specific optimizations
-3. **cleanup.sh** - Clean up temporary files and prepare for templating
-4. **runonce.sh** - Final configuration steps executed from CD-ROM
+3. **runonce.sh** - Final configuration steps executed from CD-ROM
+4. **cleanup.sh** - Clean up temporary files and prepare for templating (runs last)
 
 ## Red Hat Subscription Manager
 
