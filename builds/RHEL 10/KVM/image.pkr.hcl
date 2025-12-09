@@ -1,5 +1,5 @@
 # https://developer.hashicorp.com/packer/integrations/hashicorp/qemu
-# v.1.0.8
+# v.1.0.10
 
 variable "communicator_type" {
   type        = string
@@ -267,8 +267,7 @@ build {
   provisioner "shell" {
     scripts = [
       "${path.root}/../common/scripts/setup.sh",
-      "${path.root}/scripts/kvm.sh",
-      "${path.root}/../common/scripts/cleanup.sh"
+      "${path.root}/scripts/kvm.sh"
     ]
     execute_command = "echo '${var.template_password}' | sudo -S bash '{{ .Path }}'"
   }
@@ -287,6 +286,13 @@ build {
       "sudo umount /mnt/cdrom"
     ]
     execute_command = "echo '${var.template_password}' | sudo -S bash -c '{{ .Path }}'"
+  }
+
+  provisioner "shell" {
+    scripts = [
+      "${path.root}/../common/scripts/cleanup.sh"
+    ]
+    execute_command = "echo '${var.template_password}' | sudo -S bash '{{ .Path }}'"
   }
 
   post-processor "shell-local" {
